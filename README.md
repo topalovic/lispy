@@ -31,7 +31,7 @@ lispy> cons (len 0 0 0) {2 1}
 => {3 2 1}
 ```
 
-Hit <kbd>Ctrl</kbd>-<kbd>C</kbd> to exit.
+Hit <kbd>Ctrl</kbd>-<kbd>D</kbd> to exit.
 
 To clean the build:
 
