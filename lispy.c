@@ -11,7 +11,7 @@
 #endif
 
 /* Enumeration of LVAL types */
-enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_SEXPR };
+enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_SEXPR, LVAL_QEXPR };
 
 /* Enumeration of error types */
 enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
@@ -61,6 +61,15 @@ LVAL* lval_sexpr(void) {
     return v;
 }
 
+/* A pointer to a new empty Qexpr lval */
+LVAL* lval_qexpr(void) {
+    LVAL* v = malloc(sizeof(LVAL));
+    v->type = LVAL_QEXPR;
+    v->count = 0;
+    v->cell = NULL;
+    return v;
+}
+
 LVAL* lval_add(LVAL* v, LVAL* x) {
     v->count++;
     v->cell = realloc(v->cell, sizeof(LVAL*) * v->count);
@@ -71,15 +80,15 @@ LVAL* lval_add(LVAL* v, LVAL* x) {
 void lval_del(LVAL* v) {
 
     switch (v->type) {
-    /* Do nothing special for number type */
     case LVAL_NUM: break;
 
-    /* For Err or Sym free the string data */
+        /* For Err or Sym free the string data */
     case LVAL_ERR: free(v->err); break;
     case LVAL_SYM: free(v->sym); break;
 
-    /* If Sexpr then delete all elements inside */
+        /* If Sexpr or Qexpr, delete all nested elements */
     case LVAL_SEXPR:
+    case LVAL_QEXPR:
         for (int i = 0; i < v->count; i++) {
             lval_del(v->cell[i]);
         }
@@ -90,6 +99,41 @@ void lval_del(LVAL* v) {
 
     /* Free the memory allocated for the "LVAL" struct itself */
     free(v);
+}
+
+/* Extract an i-th element from an sexpr */
+LVAL* lval_pop(LVAL* v, int i) {
+    LVAL* x = v->cell[i];
+
+    /* Shift memory after the item at "i" over the top */
+    memmove(&v->cell[i], &v->cell[i+1],
+            sizeof(LVAL*) * (v->count-i-1));
+
+    /* Decrease the count of items in the list */
+    v->count--;
+
+    /* Reallocate the memory used */
+    v->cell = realloc(v->cell, sizeof(LVAL*) * v->count);
+    return x;
+}
+
+/* Extract an i-th element from an sexpr and delete the rest */
+LVAL* lval_take(LVAL* v, int i) {
+    LVAL* x = lval_pop(v, i);
+    lval_del(v);
+    return x;
+}
+
+LVAL* lval_join(LVAL* x, LVAL* y) {
+
+    /* For each cell in 'y' add it to 'x' */
+    while (y->count) {
+        x = lval_add(x, lval_pop(y, 0));
+    }
+
+    /* Delete the empty 'y' and return 'x' */
+    lval_del(y);
+    return x;
 }
 
 LVAL* lval_read_num(mpc_ast_t* t) {
@@ -109,10 +153,11 @@ LVAL* lval_read(mpc_ast_t* t) {
     if (strstr(t->tag, "number")) { return lval_read_num(t); }
     if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
 
-    /* If root (>) or sexpr then create empty list */
+    /* If root (>) or expr, create an empty list */
     LVAL* x = NULL;
     if (strcmp(t->tag, ">") == 0) { x = lval_sexpr(); }
     if (strstr(t->tag, "sexpr"))  { x = lval_sexpr(); }
+    if (strstr(t->tag, "qexpr"))  { x = lval_qexpr(); }
 
     /* Fill this list with any valid expression contained within */
     for (int i = 0; i < t->children_num; i++) {
@@ -145,36 +190,78 @@ void lval_expr_print(LVAL* v, char open, char close) {
 }
 
 void lval_print(LVAL* v) {
-  switch (v->type) {
+    switch (v->type) {
     case LVAL_NUM:   printf("%li", v->num); break;
     case LVAL_ERR:   printf("Error: %s", v->err); break;
     case LVAL_SYM:   printf("%s", v->sym); break;
     case LVAL_SEXPR: lval_expr_print(v, '(', ')'); break;
-  }
+    case LVAL_QEXPR: lval_expr_print(v, '{', '}'); break;
+    }
 }
 
 void lval_println(LVAL* v) { lval_print(v); putchar('\n'); }
 
-/* Extract an i-th element from an sexpr */
-LVAL* lval_pop(LVAL* v, int i) {
-    LVAL* x = v->cell[i];
+LVAL* lval_eval(LVAL* v);
 
-    /* Shift memory after the item at "i" over the top */
-    memmove(&v->cell[i], &v->cell[i+1],
-            sizeof(LVAL*) * (v->count-i-1));
+#define LASSERT(args, cond, err)                                \
+    if (!(cond)) { lval_del(args); return lval_err(err); }
 
-    /* Decrease the count of items in the list */
-    v->count--;
+LVAL* builtin_head(LVAL* a) {
+    LASSERT(a, a->count == 1,
+            "Function 'head' passed too many arguments!");
+    LASSERT(a, a->cell[0]->type == LVAL_QEXPR,
+            "Function 'head' passed incorrect type!");
+    LASSERT(a, a->cell[0]->count != 0,
+            "Function 'head' passed {}!");
 
-    /* Reallocate the memory used */
-    v->cell = realloc(v->cell, sizeof(LVAL*) * v->count);
-    return x;
+    LVAL* v = lval_take(a, 0);
+    while (v->count > 1) { lval_del(lval_pop(v, 1)); }
+    return v;
 }
 
-/* Extract an i-th element from an sexpr and delete the rest */
-LVAL* lval_take(LVAL* v, int i) {
-    LVAL* x = lval_pop(v, i);
-    lval_del(v);
+LVAL* builtin_tail(LVAL* a) {
+    LASSERT(a, a->count == 1,
+            "Function 'tail' passed too many arguments!");
+    LASSERT(a, a->cell[0]->type == LVAL_QEXPR,
+            "Function 'tail' passed incorrect type!");
+    LASSERT(a, a->cell[0]->count != 0,
+            "Function 'tail' passed {}!");
+
+    LVAL* v = lval_take(a, 0);
+    lval_del(lval_pop(v, 0));
+    return v;
+}
+
+LVAL* builtin_list(LVAL* a) {
+    a->type = LVAL_QEXPR;
+    return a;
+}
+
+LVAL* builtin_eval(LVAL* a) {
+    LASSERT(a, a->count == 1,
+            "Function 'eval' passed too many arguments!");
+    LASSERT(a, a->cell[0]->type == LVAL_QEXPR,
+            "Function 'eval' passed incorrect type!");
+
+    LVAL* x = lval_take(a, 0);
+    x->type = LVAL_SEXPR;
+    return lval_eval(x);
+}
+
+LVAL* builtin_join(LVAL* a) {
+
+    for (int i = 0; i < a->count; i++) {
+        LASSERT(a, a->cell[i]->type == LVAL_QEXPR,
+                "Function 'join' passed incorrect type.");
+    }
+
+    LVAL* x = lval_pop(a, 0);
+
+    while (a->count) {
+        x = lval_join(x, lval_pop(a, 0));
+    }
+
+    lval_del(a);
     return x;
 }
 
@@ -221,7 +308,16 @@ LVAL* builtin_op(LVAL* a, char* op) {
     return x;
 }
 
-LVAL* lval_eval(LVAL* v);
+LVAL* builtin(LVAL* a, char* func) {
+    if (strcmp("list", func) == 0) { return builtin_list(a); }
+    if (strcmp("head", func) == 0) { return builtin_head(a); }
+    if (strcmp("tail", func) == 0) { return builtin_tail(a); }
+    if (strcmp("join", func) == 0) { return builtin_join(a); }
+    if (strcmp("eval", func) == 0) { return builtin_eval(a); }
+    if (strstr("+-*/%", func)) { return builtin_op(a, func); }
+    lval_del(a);
+    return lval_err("Unknown Function!");
+}
 
 LVAL* lval_eval_sexpr(LVAL* v) {
 
@@ -246,8 +342,8 @@ LVAL* lval_eval_sexpr(LVAL* v) {
         return lval_err("S-expression doesn't start with symbol");
     }
 
-    /* Call builtin with operator */
-    LVAL* result = builtin_op(v, f->sym);
+    /* Call builtin */
+    LVAL* result = builtin(v, f->sym);
     lval_del(f);
     return result;
 }
@@ -264,18 +360,21 @@ int main(int argc, char** argv) {
     mpc_parser_t* Number = mpc_new("number");
     mpc_parser_t* Symbol = mpc_new("symbol");
     mpc_parser_t* Sexpr  = mpc_new("sexpr");
+    mpc_parser_t* Qexpr  = mpc_new("qexpr");
     mpc_parser_t* Expr   = mpc_new("expr");
     mpc_parser_t* Lispy  = mpc_new("lispy");
 
     mpca_lang(MPCA_LANG_DEFAULT,
-    "                                          \
-      number : /-?[0-9]+/ ;                    \
-      symbol : '+' | '-' | '*' | '/' | '%' ;   \
-      sexpr  : '(' <expr>* ')' ;               \
-      expr   : <number> | <symbol> | <sexpr> ; \
-      lispy  : /^/ <expr>* /$/ ;               \
+    "                                                        \
+      number : /-?[0-9]+/ ;                                  \
+      symbol : \"list\" | \"head\" | \"tail\"                \
+             | \"join\" | \"eval\" | '+' | '-' | '*' | '/' ; \
+      sexpr  : '(' <expr>* ')' ;                             \
+      qexpr  : '{' <expr>* '}' ;                             \
+      expr   : <number> | <symbol> | <sexpr> | <qexpr> ;     \
+      lispy  : /^/ <expr>* /$/ ;                             \
     ",
-    Number, Symbol, Sexpr, Expr, Lispy);
+    Number, Symbol, Sexpr ,Qexpr, Expr, Lispy);
 
     puts("Lispy Version 0.0.2");
     puts("Press Ctrl+C to Exit\n");
@@ -296,7 +395,7 @@ int main(int argc, char** argv) {
         free(input);
     }
 
-    mpc_cleanup(5, Number, Symbol, Sexpr, Expr, Lispy);
+    mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
 
     return 0;
 }
