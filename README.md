@@ -19,16 +19,36 @@ $ make run
 You'll wind up in a simple REPL:
 
 ```lisp
-lispy> list 1 2 3 4
-=> {1 2 3 4}
-lispy> join {+ 1 2} (head {3 4 5})
-=> {+ 1 2 3}
-lispy> eval (join {+ 1 2} (head {3 4 5}))
-=> 6
-lispy> tail {tail tail tail}
-=> {tail tail}
-lispy> cons (len 0 0 0) {2 1}
-=> {3 2 1}
+lispy>
+```
+
+The outermost sexpr allows parens to be omitted, so these are
+equivalent:
+
+```lisp
+lispy> + 1 2 3
+lispy> (+ 1 2 3)
+```
+
+Some of the features so far:
+
+```lisp
+lispy> list 1 2 3                                 ; => {1 2 3}
+lispy> list -5 {} len                             ; => {-5 {} <len>}
+lispy> def {foo bar baz} 1 2 3                    ; => ()
+lispy> foo                                        ; => 1
+lispy> bar                                        ; => 2
+lispy> baz                                        ; => 3
+lispy> % baz bar                                  ; => 1
+lispy> def {args} {foo bar baz}                   ; => ()
+lispy> args                                       ; => {foo bar baz}
+lispy> len args                                   ; => 3
+lispy> def {args} (cons + args)                   ; => ()
+lispy> args                                       ; => {<+> foo bar baz}
+lispy> eval args                                  ; => 6
+lispy> eval (join args (head (tail {-1 -2 -3})))  ; => 4
+lispy> def {foo} -                                ; => ()
+lispy> eval (tail args)                           ; => -1
 ```
 
 Hit <kbd>Ctrl</kbd>-<kbd>D</kbd> to exit.
