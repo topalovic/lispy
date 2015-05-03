@@ -172,7 +172,12 @@ LVAL* lval_copy(LVAL* v) {
 
     case LVAL_FUN:
         x->builtin = v->builtin;
-        if (!v->builtin) {
+
+        if (v->builtin) {
+            x->sym = malloc(strlen(v->sym) + 1);
+            strcpy(x->sym, v->sym);
+        }
+        else {
             x->env = lenv_copy(v->env);
             x->formals = lval_copy(v->formals);
             x->body = lval_copy(v->body);
@@ -324,7 +329,7 @@ void lval_print(LVAL* v) {
         if (v->builtin) {
             printf("<%s>", v->sym);
         } else {
-            printf("(\\ "); lval_print(v->formals);
+            printf("(-> "); lval_print(v->formals);
             putchar(' '); lval_print(v->body); putchar(')');
         }
     }
@@ -562,9 +567,9 @@ LVAL* builtin_var(LENV* e, LVAL* a, char* func) {
 }
 
 LVAL* builtin_lambda(LENV* e, LVAL* a) {
-    LASSERT_NUM("\\", a, 2);
-    LASSERT_TYPE("\\", a, 0, LVAL_QEXPR);
-    LASSERT_TYPE("\\", a, 1, LVAL_QEXPR);
+    LASSERT_NUM("->", a, 2);
+    LASSERT_TYPE("->", a, 0, LVAL_QEXPR);
+    LASSERT_TYPE("->", a, 1, LVAL_QEXPR);
 
     /* First q-expression should contain only symbols */
     for (int i = 0; i < a->cell[0]->count; i++) {
@@ -727,7 +732,7 @@ void lenv_add_builtin(LENV* e, char* name, LBUILTIN func) {
 
 void lenv_add_builtins(LENV* e) {
     /* Var Functions */
-    lenv_add_builtin(e, "\\",  builtin_lambda);
+    lenv_add_builtin(e, "->",  builtin_lambda);
     lenv_add_builtin(e, "def", builtin_def);
     lenv_add_builtin(e, "=",   builtin_put);
 
@@ -810,8 +815,8 @@ int main(int argc, char** argv) {
       ",
       Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
 
-    puts("Lispy Version 0.0.5");
-    puts("Press Ctrl+C to Exit\n");
+    puts("Lispy Version 0.0.6");
+    puts("Press Ctrl+D to Exit\n");
 
     LENV* e = lenv_new();
     lenv_add_builtins(e);
