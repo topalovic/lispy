@@ -333,6 +333,7 @@ void lval_print(LVAL* v) {
 void lval_println(LVAL* v) { lval_print(v); putchar('\n'); }
 
 LVAL* builtin_eval(LENV *e, LVAL* a);
+LVAL* builtin_list(LENV *e, LVAL* a);
 
 LVAL* lval_call(LENV* e, LVAL* f, LVAL* a) {
 
@@ -356,6 +357,24 @@ LVAL* lval_call(LENV* e, LVAL* f, LVAL* a) {
         /* Pop the first symbol from the formals */
         LVAL* sym = lval_pop(f->formals, 0);
 
+        /* Special case to deal with '&' */
+        if (strcmp(sym->sym, "&") == 0) {
+
+            /* Ensure '&' is followed by another symbol */
+            if (f->formals->count != 1) {
+                lval_del(a);
+                return lval_err("Function format invalid. "
+                                "Symbol '&' not followed by single symbol.");
+            }
+
+            /* Next formal should be bound to remaining arguments */
+            LVAL* nsym = lval_pop(f->formals, 0);
+            lenv_put(f->env, nsym, builtin_list(e, a));
+            lval_del(sym);
+            lval_del(nsym);
+            break;
+        }
+
         /* Pop the next argument from the list */
         LVAL* val = lval_pop(a, 0);
 
@@ -363,6 +382,28 @@ LVAL* lval_call(LENV* e, LVAL* f, LVAL* a) {
         lenv_put(f->env, sym, val);
 
         /* Delete symbol and value */
+        lval_del(sym); lval_del(val);
+    }
+
+    /* If '&' remains in formal list, bind to empty list */
+    if (f->formals->count > 0 &&
+        strcmp(f->formals->cell[0]->sym, "&") == 0) {
+
+        /* Check to ensure that & is not passed invalidly. */
+        if (f->formals->count != 2) {
+            return lval_err("Function format invalid. "
+                            "Symbol '&' not followed by single symbol.");
+        }
+
+        /* Pop and delete '&' symbol */
+        lval_del(lval_pop(f->formals, 0));
+
+        /* Pop next symbol and create empty list */
+        LVAL* sym = lval_pop(f->formals, 0);
+        LVAL* val = lval_qexpr();
+
+        /* Bind to environment and delete */
+        lenv_put(f->env, sym, val);
         lval_del(sym); lval_del(val);
     }
 
