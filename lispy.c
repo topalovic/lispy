@@ -305,7 +305,6 @@ LVAL* lval_read_num(mpc_ast_t* t) {
 }
 
 LVAL* lval_read(mpc_ast_t* t) {
-
     /* If Symbol or Number return conversion to that type */
     if (strstr(t->tag, "number")) { return lval_read_num(t); }
     if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
@@ -323,6 +322,7 @@ LVAL* lval_read(mpc_ast_t* t) {
         if (strcmp(t->children[i]->contents, "}") == 0) { continue; }
         if (strcmp(t->children[i]->contents, "{") == 0) { continue; }
         if (strcmp(t->children[i]->tag,  "regex") == 0) { continue; }
+        if (strstr(t->children[i]->tag, "comment")) { continue; }
         x = lval_add(x, lval_read(t->children[i]));
     }
 
@@ -913,23 +913,26 @@ LVAL* lval_eval(LENV* e, LVAL* v) {
 }
 
 int main(int argc, char** argv) {
-    mpc_parser_t* Number = mpc_new("number");
-    mpc_parser_t* Symbol = mpc_new("symbol");
-    mpc_parser_t* Sexpr  = mpc_new("sexpr");
-    mpc_parser_t* Qexpr  = mpc_new("qexpr");
-    mpc_parser_t* Expr   = mpc_new("expr");
-    mpc_parser_t* Lispy  = mpc_new("lispy");
+    mpc_parser_t* Comment = mpc_new("comment");
+    mpc_parser_t* Number  = mpc_new("number");
+    mpc_parser_t* Symbol  = mpc_new("symbol");
+    mpc_parser_t* Sexpr   = mpc_new("sexpr");
+    mpc_parser_t* Qexpr   = mpc_new("qexpr");
+    mpc_parser_t* Expr    = mpc_new("expr");
+    mpc_parser_t* Lispy   = mpc_new("lispy");
 
     mpca_lang(MPCA_LANG_DEFAULT,
       "                                                  \
+      comment : /;[^\\r\\n]*/ ;                          \
       number : /-?[0-9]+/ ;                              \
       symbol : /[a-zA-Z0-9_+\\-*%\\/\\\\=<>!\?&]+/ ;     \
       sexpr  : '(' <expr>* ')' ;                         \
       qexpr  : '{' <expr>* '}' ;                         \
-      expr   : <number> | <symbol> | <sexpr> | <qexpr> ; \
+      expr   : <comment> | <number> | <symbol>           \
+             | <sexpr>   | <qexpr> ;                     \
       lispy  : /^/ <expr>* /$/ ;                         \
       ",
-      Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
+      Comment, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
 
     puts("Lispy Version 0.0.7");
     puts("Press Ctrl+D to Exit\n");
@@ -965,7 +968,7 @@ int main(int argc, char** argv) {
 
     lenv_del(e);
 
-    mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
+    mpc_cleanup(7, Comment, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
 
     return 0;
 }
