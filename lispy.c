@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include "mpc.h"
 
 /* No history.h on OS X */
@@ -9,6 +7,15 @@
 #include <editline/readline.h>
 #include <editline/history.h>
 #endif
+
+mpc_parser_t* Number;
+mpc_parser_t* Symbol;
+mpc_parser_t* String;
+mpc_parser_t* Comment;
+mpc_parser_t* Sexpr;
+mpc_parser_t* Qexpr;
+mpc_parser_t* Expr;
+mpc_parser_t* Lispy;
 
 struct LVAL;
 struct LENV;
@@ -342,8 +349,8 @@ LVAL* lval_read_str(mpc_ast_t* t) {
 LVAL* lval_read(mpc_ast_t* t) {
     /* If Symbol or Number return conversion to that type */
     if (strstr(t->tag, "number")) { return lval_read_num(t); }
-    if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
     if (strstr(t->tag, "string")) { return lval_read_str(t); }
+    if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
 
     /* If root (>) or expr, create an empty list */
     LVAL* x = NULL;
@@ -874,6 +881,58 @@ LVAL* builtin_if(LENV* e, LVAL* a) {
     return x;
 }
 
+LVAL* builtin_load(LENV* e, LVAL* a) {
+    LASSERT_NUM("load", a, 1);
+    LASSERT_TYPE("load", a, 0, LVAL_STR);
+
+    /* Parse file given by string name */
+    mpc_result_t r;
+    if (mpc_parse_contents(a->cell[0]->str, Lispy, &r)) {
+        LVAL* expr = lval_read(r.output);
+        mpc_ast_delete(r.output);
+
+        while (expr->count) {
+            LVAL* x = lval_eval(e, lval_pop(expr, 0));
+            if (x->type == LVAL_ERR) { lval_println(x); }
+            lval_del(x);
+        }
+
+        lval_del(expr);
+        lval_del(a);
+        return lval_sexpr();
+    }
+    else {
+        char* err_msg = mpc_err_string(r.error);
+        mpc_err_delete(r.error);
+
+        LVAL* err = lval_err("Could not load %s", err_msg);
+        free(err_msg);
+        lval_del(a);
+        return err;
+    }
+}
+
+LVAL* builtin_print(LENV* e, LVAL* a) {
+    for (int i = 0; i < a->count; i++) {
+        lval_print(a->cell[i]); putchar(' ');
+    }
+
+    putchar('\n');
+    lval_del(a);
+
+    return lval_sexpr();
+}
+
+LVAL* builtin_error(LENV* e, LVAL* a) {
+    LASSERT_NUM("error", a, 1);
+    LASSERT_TYPE("error", a, 0, LVAL_STR);
+
+    LVAL* err = lval_err(a->cell[0]->str);
+
+    lval_del(a);
+    return err;
+}
+
 void lenv_add_builtin(LENV* e, char* name, LBUILTIN func) {
     LVAL* k = lval_sym(name);
     LVAL* v = lval_fun(func, name);
@@ -883,6 +942,11 @@ void lenv_add_builtin(LENV* e, char* name, LBUILTIN func) {
 }
 
 void lenv_add_builtins(LENV* e) {
+    /* String Functions */
+    lenv_add_builtin(e, "load",  builtin_load);
+    lenv_add_builtin(e, "error", builtin_error);
+    lenv_add_builtin(e, "print", builtin_print);
+
     /* Var functions */
     lenv_add_builtin(e, "def", builtin_def);
     lenv_add_builtin(e, "=",   builtin_put);
@@ -958,31 +1022,29 @@ LVAL* lval_eval(LENV* e, LVAL* v) {
 }
 
 int main(int argc, char** argv) {
-    mpc_parser_t* Comment = mpc_new("comment");
-    mpc_parser_t* Number  = mpc_new("number");
-    mpc_parser_t* Symbol  = mpc_new("symbol");
-    mpc_parser_t* String  = mpc_new("string");
-    mpc_parser_t* Sexpr   = mpc_new("sexpr");
-    mpc_parser_t* Qexpr   = mpc_new("qexpr");
-    mpc_parser_t* Expr    = mpc_new("expr");
-    mpc_parser_t* Lispy   = mpc_new("lispy");
+
+    Number  = mpc_new("number");
+    Symbol  = mpc_new("symbol");
+    String  = mpc_new("string");
+    Comment = mpc_new("comment");
+    Sexpr   = mpc_new("sexpr");
+    Qexpr   = mpc_new("qexpr");
+    Expr    = mpc_new("expr");
+    Lispy   = mpc_new("lispy");
 
     mpca_lang(MPCA_LANG_DEFAULT,
       "                                                  \
-      comment : /;[^\\r\\n]*/ ;                          \
       number : /-?[0-9]+/ ;                              \
       symbol : /[a-zA-Z0-9_+\\-*%\\/\\\\=<>!\?&]+/ ;     \
       string  : /\"(\\\\.|[^\"])*\"/ ;                   \
+      comment : /;[^\\r\\n]*/ ;                          \
       sexpr  : '(' <expr>* ')' ;                         \
       qexpr  : '{' <expr>* '}' ;                         \
-      expr   : <comment> | <number> | <symbol>           \
-             | <string>  | <sexpr>  | <qexpr> ;          \
+      expr   : <number>   | <symbol> | <string>          \
+             | <comment>  | <sexpr>  | <qexpr> ;         \
       lispy  : /^/ <expr>* /$/ ;                         \
       ",
-      Comment, Number, Symbol, String, Sexpr, Qexpr, Expr, Lispy);
-
-    puts("Lispy Version 0.0.7");
-    puts("Press Ctrl+D to Exit\n");
+      Number, Symbol, String, Comment, Sexpr, Qexpr, Expr, Lispy);
 
     LENV* e = lenv_new();
     lenv_add_builtins(e);
