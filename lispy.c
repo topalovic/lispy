@@ -36,14 +36,14 @@ enum {
 
 char* ltype_name(int t) {
     switch(t) {
-    case LVAL_FUN: return "Function";
-    case LVAL_NUM: return "Number";
-    case LVAL_ERR: return "Error";
-    case LVAL_SYM: return "Symbol";
-    case LVAL_STR: return "String";
-    case LVAL_SEXPR: return "S-Expression";
-    case LVAL_QEXPR: return "Q-Expression";
-    default: return "Unknown";
+    case LVAL_FUN: return "function";
+    case LVAL_NUM: return "number";
+    case LVAL_ERR: return "error";
+    case LVAL_SYM: return "symbol";
+    case LVAL_STR: return "string";
+    case LVAL_SEXPR: return "sexpr";
+    case LVAL_QEXPR: return "qexpr";
+    default: return "unknown";
     }
 }
 
@@ -680,6 +680,7 @@ LVAL* builtin_list(LENV *e, LVAL* a) {
 
 LVAL* builtin_len(LENV *e, LVAL* a) {
     LASSERT_NUM("len", a, 1);
+    LASSERT_TYPE("len", a, 0, LVAL_QEXPR);
 
     LVAL *x = lval_num(a->cell[0]->count);
     lval_del(a);
@@ -923,6 +924,12 @@ LVAL* builtin_print(LENV* e, LVAL* a) {
     return lval_sexpr();
 }
 
+LVAL* builtin_type(LENV* e, LVAL* a) {
+    char *s = ltype_name(a->cell[0]->type);
+    lval_del(a);
+    return lval_str(s);
+}
+
 LVAL* builtin_error(LENV* e, LVAL* a) {
     LASSERT_NUM("error", a, 1);
     LASSERT_TYPE("error", a, 0, LVAL_STR);
@@ -942,6 +949,8 @@ void lenv_add_builtin(LENV* e, char* name, LBUILTIN func) {
 }
 
 void lenv_add_builtins(LENV* e) {
+    lenv_add_builtin(e, "type", builtin_type);
+
     /* String Functions */
     lenv_add_builtin(e, "load",  builtin_load);
     lenv_add_builtin(e, "error", builtin_error);
