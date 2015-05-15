@@ -47,9 +47,9 @@ void register_builtins(LENV* e) {
     lenv_register_builtin(e, "error", builtin_error);
 
     /* Var functions */
-    lenv_register_builtin(e, "def", builtin_def);
-    lenv_register_builtin(e, "=",   builtin_put);
-    lenv_register_builtin(e, "->",  builtin_lambda);
+    lenv_register_builtin(e, "def",  builtin_def);
+    lenv_register_builtin(e, "=",    builtin_put);
+    lenv_register_builtin(e, "->",   builtin_lambda);
     lenv_register_builtin(e, "type", builtin_type);
 
     /* List functions */
@@ -76,6 +76,17 @@ void register_builtins(LENV* e) {
     lenv_register_builtin(e, "<",   builtin_lt);
     lenv_register_builtin(e, ">=",  builtin_ge);
     lenv_register_builtin(e, "<=",  builtin_le);
+}
+
+/**
+ * Load lib within a given lenv.
+ */
+void load_lib(LENV* e, char *filename) {
+    LVAL* arg = lval_add(lval_sexpr(), lval_str(filename));
+    LVAL* res = builtin_load(e, arg);
+
+    if (res->type == LVAL_ERR) { lval_println(res); }
+    lval_del(res);
 }
 
 /**
@@ -108,6 +119,8 @@ int main(int argc, char** argv) {
 
     LENV* e = lenv_new();
     register_builtins(e);
+
+    load_lib(e, "prologue.lsp");
 
     char *prompt = ">> ";
     char *result = "=> ";
