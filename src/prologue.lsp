@@ -45,15 +45,15 @@
 (defn {even? x} { not (odd? x) })
 
 (defn {num? x} {
-  (eq "number" (type x))
+  eq "number" (type x)
 })
 
 (defn {str? x} {
-  (eq "string" (type x))
+  eq "string" (type x)
 })
 
 (defn {list? x} {
-  (in? {"sexpr" "qexpr"} (type x))
+  in? {"sexpr" "qexpr"} (type x)
 })
 
 ;; logical ops
@@ -137,6 +137,12 @@
       {list l}}
 })
 
+(defn {range start end} {
+  if (> start end)
+    {nil}
+    {join (list start) (range (inc start) end)}
+})
+
 ;; functional
 
 (defn {apply f xs} {
@@ -175,6 +181,13 @@
 (defn {sum l} { reduce + 0 l })
 (defn {product l} { reduce * 1 l })
 
+; recursive variant, sums trees
+(defn {sum2 l} {
+  if (num? l)
+    {l}
+    {apply + (map sum2 l)}
+})
+
 (defn {filter f l} {
   if (empty? l)
     {nil}
@@ -205,4 +218,10 @@
   if (any? empty? {x y})
     {nil}
     {join (list (join (head x) (head y))) (zip (tail x) (tail y))}
+})
+
+(defn {comp & fs} {
+  (fn {fs args} {
+    foldr (fn {z g} {z g}) ((last fs) args) (but-last fs)
+  }) fs
 })
