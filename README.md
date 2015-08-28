@@ -1,26 +1,41 @@
 Lispy
 =====
 
-Exploring parser combinators through @orangeduck's slick
-[library](https://github.com/orangeduck/mpc)
-while building a tiny Lisp along the way. Fun!
+*“One can make all kinds of Lisps using simple household items.
+If one were so inclined.”*
 
-You can get your own [here](http://buildyourownlisp.com/contents).
+A tiny Lisp(ish) interpreter based on @orangeduck's
+[excellent tutorial](http://buildyourownlisp.com/contents), with basic
+support for integers, strings, conditionals, user-defined vars and
+functions. No macros and TCO yet, but a man can dream...
+
+
+## Setup
+
+Clone the repo and run:
+
+```sh
+$ make run
+```
+
+If all is well, you'll wind up in a simple REPL:
+
+```
+>>
+```
+
+Hit <kbd>Ctrl</kbd>-<kbd>D</kbd> to exit.
+
+To clean the build:
+
+```sh
+$ make clean
+```
 
 
 ## Usage
 
-Clone the repo and run:
-
-```
-$ make run
-```
-
-You'll wind up in a simple REPL:
-
-```lisp
-lispy>
-```
+With formalities out of the way, let's take it for a spin.
 
 The outermost sexpr allows parens to be omitted, so these are
 equivalent:
@@ -33,82 +48,82 @@ equivalent:
 Quoted expressions are denoted by braces:
 
 ```lisp
-(+ 1 2 3)      ; => 6
-{+ 1 2 3}      ; => {+ 1 2 3}
-len {+ 1 2 3}  ; => 4
+(+ 1 2 3)       ; => 6
+{+ 1 2 3}       ; => {+ 1 2 3}
+eval {+ 1 2 3}  ; => 6
 ```
 
-Now, let's take it for a spin:
+To load a source file:
 
 ```lisp
-(-> {n} {* n n})               ; => lambda which squares its arg
-(-> {n} {* n n}) -5            ; => 25, calling the lambda directly
-def {square} (-> {n} {* n n})  ; => bind symbol to lambda
-square -5                      ; => 25
+load "hello.lsp"
 ```
 
-How about a fancy function defining function?
+To define and call a function:
 
 ```lisp
-def {defun} (-> {args body} {def (head args) (-> (tail args) body)})
+-> {n} {* 2 n}              ; => a lambda that doubles its arg
+(-> {n} {* 2 n}) 5          ; => 10, calling it directly
+def {dbl} (-> {n} {* 2 n})  ; => bind symbol to lambda
+dbl 5                       ; => 10
 ```
 
-Now:
+A [utility library](src/prologue.lsp) will be loaded by default,
+providing some common functionality. Let's check out some of that
+goodness.
+
+Function definition reloaded, now with a friendlier syntax:
 
 ```lisp
-defun {square x} {* x x}  ; => yum
-square -5                 ; => 25
+defn {dbl n} {* 2 n}
+dbl 5  ; => 10
 ```
 
-Partial application? Sure:
+You can slice and dice...
 
 ```lisp
-defun {add n increment} {+ n increment}
-def {inc} (add 1)
-inc 0  ; => 1
+def {array} (range -3 3)
+nth 5 array               ; => 2
+apply + (but-last array)  ; => -3
+split 2 (reverse array)   ; => {{3 2} {1 0 -1 -2 -3}}
 ```
 
-Simple currying tricks:
+filter and query...
 
 ```lisp
-defun {curry f xs} {eval (cons f xs)}
-defun {uncurry f & xs} {f xs}
-curry + {1 2 3}                        ; => 6
-uncurry tail 1 2 3                     ; => {2 3}
+all? num? array          ; => 1 (true)
+len (filter odd? array)  ; => 4
+drop-while neg? array    ; => {0 1 2 3}
 ```
 
-First take on `map`:
+map and fold...
 
 ```lisp
-(defun {empty? c}
-  {== 0 (len c)})
+sum (map sqr array)  ; => 28
 
-(defun {map f c} {
-  if (empty? c)
-    {{}}
-    {join (list (f (eval (head c)))) (map f (tail c))}})
-
-(map square {-1 2 4})  ; => {1 4 16}
+zip array (map (-> {n} {abs (* 2 n)}) array)
+; => {{-3 6} {-2 4} {-1 2} {0 0} {1 2} {2 4} {3 6}}
 ```
 
-and `reduce`:
+compose and partially apply functions...
 
 ```lisp
-(defun {reduce f acc c} {
-  if (empty? c)
-    {acc}
-    {reduce f (f acc (eval (head c))) (tail c)}})
+(comp dec abs (apply -)) array  ; => 5
 
-(defun {sum c}
-  {reduce + 0 c})
-
-(sum {-1 2 4})  ; => 5
+defn {add n incr} {+ n incr}
+def {++} (add 1)
+++ 0  ; => 1
 ```
 
-Hit <kbd>Ctrl</kbd>-<kbd>D</kbd> to exit.
+and so on.
 
-To clean the build:
+Type the name of the function to get its definition printed:
 
+```lisp
+first  ; => (-> {l} {eval (head l)})
 ```
-$ make clean
-```
+
+and make sure to check the [prologue](src/prologue.lsp) for more
+goodies.
+
+Thanks for dropping by! o/
